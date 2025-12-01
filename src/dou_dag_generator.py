@@ -124,7 +124,7 @@ class DouDigestDagGenerator:
             "DOU": DOUSearcher(),
             "QD": QDSearcher(),
             "INLABS": INLABSSearcher(),
-        }       
+        }
 
         self.on_failure_callback = self._notify_on_failure
         self.on_retry_callback = None
@@ -132,7 +132,7 @@ class DouDigestDagGenerator:
     def _notify_on_failure(self, specs: DAGConfig, context):
         """Function called when the task fails to send a notification to admin"""
         try:
-           
+
             task_instance = context.get('task_instance')
             dag_run = context.get('dag_run')
             exception = context.get('exception')
@@ -143,7 +143,7 @@ class DouDigestDagGenerator:
 
             # Determina lista de emails para notificação
             email_list = []
-            
+
             if specs.callback and specs.callback.on_failure_callback:
                 # Usa emails configurados no .yaml
                 email_list = specs.callback.on_failure_callback
@@ -152,7 +152,7 @@ class DouDigestDagGenerator:
                 try:
                     email_admin = Variable.get('email_admin', default_var=None)
                     if email_admin:
-                        email_list = [email_admin]                        
+                        email_list = [email_admin]
                     else:
                         logging.warning("No email_admin variable found in Airflow")
                 except Exception as e:
@@ -200,7 +200,7 @@ class DouDigestDagGenerator:
                     ),
                     channel=description["channel"],
                 )
-                slack_notifier.notify(context)                
+                slack_notifier.notify(context)
             except Exception as e:
                 logging.error(f"Slack notification not sent: {str(e)}")
 
@@ -328,10 +328,10 @@ class DouDigestDagGenerator:
         """Converte term_list para lista, tratando aspas duplas extras."""
         if not isinstance(term_list, str):
             return term_list
-        
+
         # Remove espaços
         term_list = term_list.strip()
-        
+
         # Tenta converter até 2 vezes (para casos de serialização dupla)
         for _ in range(2):
             if term_list.startswith(('[', '"[', "'[")):
@@ -341,7 +341,7 @@ class DouDigestDagGenerator:
                         return term_list
                 except (ValueError, SyntaxError):
                     break
-        
+
         return term_list
 
     def perform_searches(
@@ -367,7 +367,7 @@ class DouDigestDagGenerator:
         number_of_excerpts: Optional[int],
         **context,
     ) -> dict:
-        """Performs the search in each source and merge the results"""        
+        """Performs the search in each source and merge the results"""
         if "DOU" in sources:
             dou_result = self.searchers["DOU"].exec_search(
                 term_list=term_list,
@@ -382,7 +382,7 @@ class DouDigestDagGenerator:
                 pubtype=pubtype,
                 reference_date=get_trigger_date(context, local_time=True),
             )
-        elif "INLABS" in sources:                         
+        elif "INLABS" in sources:
             terms = self._parse_term_list(term_list)
             inlabs_result = self.searchers["INLABS"].exec_search(
                 terms=terms,
@@ -495,31 +495,31 @@ class DouDigestDagGenerator:
         - If the variable value is a list (JSON), it will be parsed with json.loads()
         - Otherwise, it will be treated as a string and split by line breaks
         - Useful for configuring dynamic lists using Airflow variables
-        """        
+        """
 
         term_list = []
         var_name = variable
-        
+
         try:
             var_value = Variable.get(var_name)
             # Se já é uma lista, retorna direto
             if isinstance(var_value, list):
                 return var_value
-        
+
             if isinstance(var_value, str):
                 if var_value.strip().startswith('['):
                     return ast.literal_eval(var_value)
                 else:
                     # Trata como texto separado por linhas
-                    return var_value.splitlines()                    
+                    return var_value.splitlines()
             return term_list
 
         except (KeyError):
             raise KeyError(
                 f"Airflow variable {var_name} not found."
             )
-        
-        
+
+
 
     def select_terms_from_db(self, sql: str, conn_id: str):
         """Queries the `sql` and return the list of terms that will be
@@ -541,7 +541,7 @@ class DouDigestDagGenerator:
         terms_df = db_hook.get_pandas_df(sql)
         # Remove unnecessary spaces and change null for ''
         terms_df = terms_df.applymap(lambda x: str.strip(x) if pd.notnull(x) else "")
-      
+
         return terms_df.to_json(orient="columns")
 
     def send_notification(
@@ -567,8 +567,8 @@ class DouDigestDagGenerator:
             "owner": ",".join(specs.owner),
             "start_date": datetime(2021, 10, 18),
             "depends_on_past": False,
-            "retries": 10,
-            "retry_delay": timedelta(minutes=2),
+            "retries": 2,
+            "retry_delay": timedelta(minutes=20),
             "on_retry_callback": self.on_retry_callback,
             "on_failure_callback": lambda context: self._notify_on_failure(specs, context),
         }
@@ -595,7 +595,7 @@ class DouDigestDagGenerator:
 
                 searches = specs.search
 
-                for counter, subsearch in enumerate(searches, 1):                   
+                for counter, subsearch in enumerate(searches, 1):
                     # Verify if the terms were fetched from the database
                     terms_come_from_db: bool = isinstance(
                         subsearch.terms, FetchTermsConfig
@@ -627,7 +627,7 @@ class DouDigestDagGenerator:
                             + str(counter)
                             + "') }}"
                         )
-                        
+
                     elif terms_come_from_db:
                         select_terms_from_db_task = PythonOperator(
                             task_id=f"select_terms_from_db_{counter}",
@@ -642,7 +642,7 @@ class DouDigestDagGenerator:
                             + str(counter)
                             + "') }}"
                         )
-                                           
+
                     exec_search_task = PythonOperator(
                         task_id=f"exec_search_{counter}",
                         python_callable=self.perform_searches,
@@ -675,7 +675,7 @@ class DouDigestDagGenerator:
                     if terms_come_from_db:
                         # pylint: disable=pointless-statement
                         select_terms_from_db_task >> exec_search_task
-                        
+
             has_matches_task = BranchPythonOperator(
                 task_id="has_matches",
                 python_callable=self.has_matches,
