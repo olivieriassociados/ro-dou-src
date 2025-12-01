@@ -384,7 +384,7 @@ class DOUSearcher(BaseSearcher):
 
 class QDSearcher(BaseSearcher):
 
-    API_BASE_URL = "https://queridodiario.ok.org.br/api/gazettes"
+    API_BASE_URL = "https://api.queridodiario.ok.org.br/gazettes"
 
     def exec_search(
         self,
@@ -397,7 +397,6 @@ class QDSearcher(BaseSearcher):
         result_as_email: bool = True,
     ):
         term_list = self._cast_term_list(term_list)
-        tailored_date = reference_date - timedelta(days=1)
         search_results = {}
 
         for search_term in term_list:
@@ -406,7 +405,7 @@ class QDSearcher(BaseSearcher):
                 territory_id=territory_id,
                 search_term=search_term,
                 is_exact_search=is_exact_search,
-                reference_date=tailored_date,
+                reference_date=reference_date,
                 excerpt_size=excerpt_size,
                 number_of_excerpts=number_of_excerpts,
                 result_as_email=result_as_email,
