@@ -12,6 +12,16 @@ from airflow.hooks.base import BaseHook
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 from typing import Optional
 
+def _escape_sql_string(value: str | None) -> str | None:
+    """Escape single quotes in SQL string values.
+
+    In SQL, single quotes are escaped by doubling them: ' -> ''
+    """
+    if value is None:
+        return value
+    return value.replace("'", "''")
+
+
 class INLABSHook(BaseHook):
     """A custom Apache Airflow Hook designed for executing searches via
     the DOU Postgres Database provided by INLABS.
@@ -82,7 +92,7 @@ class INLABSHook(BaseHook):
         main_search_queries = self._generate_sql(search_terms)
         hook.run(main_search_queries["create_extension"], autocommit=True)
         main_search_results = hook.get_pandas_df(main_search_queries["select"])
-       
+
         # Fetching results for yesterday extra search terms
         extra_search_terms = self._adapt_search_terms_to_extra(search_terms)
         extra_search_queries = self._generate_sql(extra_search_terms)
@@ -180,8 +190,9 @@ class INLABSHook(BaseHook):
                                         operator = sub_term
                                     sub_conditions.append(operator)
                                 else:
+                                    escaped_sub_term = _escape_sql_string(sub_term)
                                     sub_conditions.append(
-                                        rf"dou_inlabs.unaccent({key}) {'~*' if like_positive else '!~*'} dou_inlabs.unaccent('\y{sub_term}\y')",
+                                        rf"dou_inlabs.unaccent({key}) {'~*' if like_positive else '!~*'} dou_inlabs.unaccent('\y{escaped_sub_term}\y')",
                                         )
 
                             statement = ''.join(sub_conditions)
@@ -191,8 +202,9 @@ class INLABSHook(BaseHook):
 
                         else:
                             # If there isn't operator in the string
+                            escaped_term = _escape_sql_string(term)
                             key_conditions.append(
-                                rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{term}\y')")
+                                rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{escaped_term}\y')")
 
                     conditions.append("(" + " OR ".join(key_conditions) + ")")
 
@@ -201,7 +213,7 @@ class INLABSHook(BaseHook):
                         "(" +
                         " AND ".join(
                         [
-                            rf"dou_inlabs.unaccent(artcategory) !~* dou_inlabs.unaccent('^{value}')"
+                            rf"dou_inlabs.unaccent(artcategory) !~* dou_inlabs.unaccent('^{_escape_sql_string(value)}')"
                             for value in values
                         ]
                         ) +
@@ -213,7 +225,7 @@ class INLABSHook(BaseHook):
                     "(" +
                     " OR ".join(
                         [
-                            rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{value}\y')"
+                            rf"dou_inlabs.unaccent({key}) ~* dou_inlabs.unaccent('\y{_escape_sql_string(value)}\y')"
                             for value in values
                         ]
                     ) +
@@ -329,7 +341,7 @@ class INLABSHook(BaseHook):
 
             if not full_text:
                 df["texto"] = df["texto"].apply(self._trim_text)
-            
+
             if text_length is not None and text_length != 400:
                 df["texto"] = df["texto"].apply(lambda x: self._trim_text(x, text_length))
 
@@ -459,25 +471,25 @@ class INLABSHook(BaseHook):
         @staticmethod
         def _trim_text(text: str, text_length: int = 400) -> str:
             """Truncates text while keeping the `<%%>` marker centered when present.
-    
+
                 If the text contains the `<%%>` marker, the function preserves this marker
                 in the center and keeps a specific number of characters before and after it.
                 Otherwise, it truncates the text from the beginning.
-                
+
                 Args:
                     text (str): Text to be truncated
-                    text_length (int, optional): Number of characters to keep on each side of 
+                    text_length (int, optional): Number of characters to keep on each side of
                                         the `<%%>` marker.
-                
+
                 Returns:
                     str: Truncated text with "(...)" indicating removed parts
-                    
+
                 Examples:
                     - With marker: "(...) last_N_chars<%%>first_N_chars (...)"
                     - Without marker: "first_N_chars (...)"
             """
 
-            parts = text.split("<%%>", 1)    
+            parts = text.split("<%%>", 1)
             if text_length is False or text_length is None or text_length <= 0:
                 text_length = 400
 
@@ -485,11 +497,11 @@ class INLABSHook(BaseHook):
                 # Texto tem o marcador <%%>
                 before_full = parts[0]
                 after_full = parts[1]
-                
+
                 # Determina se precisa truncar cada parte
                 before_truncated = len(before_full) > text_length
                 after_truncated = len(after_full) > text_length
-                
+
                 # Processa a parte antes do marcador
                 if before_truncated:
                     before = before_full[-text_length:]
@@ -497,7 +509,7 @@ class INLABSHook(BaseHook):
                 else:
                     before = before_full
                     prefix = ""
-                
+
                 # Processa a parte depois do marcador
                 if after_truncated:
                     after = after_full[:text_length].rstrip()
@@ -505,7 +517,7 @@ class INLABSHook(BaseHook):
                 else:
                     after = after_full
                     suffix = ""
-                
+
                 return f"{prefix}{before}<%%>{after}{suffix}"
             else:
                 return f"{text[:text_length].rstrip()} (...)"
